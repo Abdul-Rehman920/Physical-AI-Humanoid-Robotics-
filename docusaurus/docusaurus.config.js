@@ -20,16 +20,16 @@ const config = {
   },
 
   // Set the production url of your site here
-  url: 'https://github.com',
+  url: 'https://abdul-rehman920.github.io',
   // Set the /<baseUrl>/ pathname under which your site is served
   // For GitHub pages deployment, it is often '/<projectName>/'
-  baseUrl: '/textbook/',
+  baseUrl: '/Physical-AI-Humanoid-Robotics-/',
 
   // GitHub pages deployment config.
   // If you aren't using GitHub pages, you don't need these.
-  organizationName: 'speck-school', // Usually your GitHub org/user name.
-  projectName: 'textbook', // Usually your repo name.
-  trailingSlash: false,
+  organizationName: 'Abdul-Rehman920', // Usually your GitHub org/user name.
+  projectName: 'Physical-AI-Humanoid-Robotics-', // Usually your repo name.
+  trailingSlash: true,
 
   onBrokenLinks: 'throw',
 
