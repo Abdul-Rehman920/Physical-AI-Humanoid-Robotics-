@@ -1,0 +1,317 @@
+---
+sidebar_position: 2
+---
+
+# Chapter 2: ROS 2 Communication Patterns
+
+## Introduction
+
+In any distributed system, effective communication between different components is paramount. In robotics, where numerous processes often run concurrently across multiple machines, a well-defined and efficient communication architecture is even more crucial. ROS 2 provides a rich set of communication patterns that allow nodes to exchange information, request tasks, and coordinate complex behaviors. These patterns are built upon the Data Distribution Service (DDS) middleware, offering robust, scalable, and real-time capable communication. Understanding when and how to use each pattern—Topics, Services, and Actions—is key to designing flexible, modular, and maintainable ROS 2 applications. This chapter will delve into each of these fundamental communication paradigms, illustrating their use cases with practical examples and code snippets, and guiding you on how to choose the right tool for the right job in your robotics projects.
+
+## Services: Request-Response Pattern
+
+While topics are ideal for streaming continuous data, there are many scenarios in robotics where a node needs to request a computation or a specific action from another node and then wait for a response. For these synchronous, request-response interactions, ROS 2 provides **Services**. Services are best used for operations that:
+
+*   **Have a clear start and end:** e.g., "calculate inverse kinematics," "take a picture," "set a joint position."
+*   **Require a response:** The client needs to know the outcome of the request before proceeding.
+*   **Are not high-frequency:** Services are generally not designed for continuous data streams like sensor readings.
+
+A service definition consists of two parts: a **request** message and a **response** message, separated by `---`. For example, a simple service to add two integers might define its request as two integer fields and its response as a single integer sum field.
+
+### Creating a Service Server
+A service server is a node that "advertises" a service and waits for clients to call it. When a client makes a request, the server executes a callback function to process the request and send back a response.
+
+```python
+import rclpy
+from rclpy.node import Node
+from example_interfaces.srv import AddTwoInts # Standard service type for adding two integers
+
+class MinimalService(Node):
+    def __init__(self):
+        super().__init__('minimal_service')
+        # Create a service server
+        # Arguments: Service type, service name, callback function
+        self.srv = self.create_service(AddTwoInts, 'add_two_ints', self.add_two_ints_callback)
+        self.get_logger().info('AddTwoInts service is ready.')
+
+    def add_two_ints_callback(self, request, response):
+        # Process the request
+        response.sum = request.a + request.b
+        self.get_logger().info(f'Incoming request: a={request.a}, b={request.b}. Sum={response.sum}')
+        # Return the response
+        return response
+
+def main(args=None):
+    rclpy.init(args=args)
+    minimal_service = MinimalService()
+    rclpy.spin(minimal_service) # Keep the service running
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+### Creating a Service Client
+A service client is a node that sends a request to a service server and waits for its response. It needs to know the service type and name.
+
+```python
+import sys
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy # For QoS
+from example_interfaces.srv import AddTwoInts
+from std_msgs.msg import String
+
+class MinimalClient(Node):
+    def __init__(self):
+        super().__init__('minimal_client')
+        self.cli = self.create_client(AddTwoInts, 'add_two_ints')
+        
+        # Wait until the service is available
+        while not self.cli.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('Service not available, waiting again...')
+        self.req = AddTwoInts.Request()
+
+    def send_request(self, a, b):
+        self.req.a = a
+        self.req.b = b
+        # Call the service asynchronously
+        self.future = self.cli.call_async(self.req)
+        # Add a callback to process the response when it arrives
+        self.future.add_done_callback(self.response_callback)
+
+    def response_callback(self, future):
+        try:
+            response = future.result()
+            self.get_logger().info(f'Result of add_two_ints: {self.req.a} + {self.req.b} = {response.sum}')
+        except Exception as e:
+            self.get_logger().error(f'Service call failed: {e}')
+
+def main(args=None):
+    rclpy.init(args=args)
+    minimal_client = MinimalClient()
+    
+    if len(sys.argv) == 3:
+        a = int(sys.argv[1])
+        b = int(sys.argv[2])
+        minimal_client.send_request(a, b)
+        rclpy.spin_until_future_complete(minimal_client, minimal_client.future)
+    else:
+        minimal_client.get_logger().info('Usage: ros2 run <package_name> minimal_client <a> <b>')
+    
+    minimal_client.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Actions: Long-Running Tasks
+
+For long-running tasks that provide continuous feedback and can be preempted, ROS 2 offers **Actions**. Actions are a more complex communication pattern, built on top of topics and services, designed for goals that might take a significant amount of time to complete. Common use cases include:
+
+*   **Navigation:** "Go to X, Y coordinates." (Feedback: current position, progress. Preemption: stop, change destination).
+*   **Arm Manipulation:** "Pick up object A and place it on B." (Feedback: arm position, grasping status. Preemption: abort if unexpected obstacle).
+*   **Image Processing:** "Process video stream for object detection." (Feedback: frames processed, objects detected. Preemption: stop processing).
+
+An action definition has three parts:
+*   **Goal:** The request to start the long-running task.
+*   **Result:** The outcome of the task upon completion.
+*   **Feedback:** Intermediate updates on the progress of the task.
+
+### Action Server Implementation
+An action server receives goals from clients, executes the task, provides feedback, and sends a final result.
+
+```python
+import time
+import rclpy
+from rclpy.action import ActionServer
+from rclpy.node import Node
+from example_interfaces.action import Fibonacci # Example action type
+
+class MinimalActionServer(Node):
+    def __init__(self):
+        super().__init__('minimal_action_server')
+        self._action_server = ActionServer(
+            self,
+            Fibonacci,
+            'fibonacci',
+            self.execute_callback)
+        self.get_logger().info('Fibonacci Action Server started.')
+
+    async def execute_callback(self, goal_handle):
+        self.get_logger().info('Executing goal...')
+
+        sequence = [0, 1]
+        for i in range(1, goal_handle.request.order):
+            if goal_handle.is_cancel_requested:
+                goal_handle.canceled()
+                self.get_logger().info('Goal canceled.')
+                return Fibonacci.Result() # Return empty result
+            
+            sequence.append(sequence[i] + sequence[i-1])
+            
+            feedback_msg = Fibonacci.Feedback()
+            feedback_msg.sequence = sequence
+            goal_handle.publish_feedback(feedback_msg)
+            self.get_logger().info(f'Publishing feedback: {feedback_msg.sequence}')
+            time.sleep(1) # Simulate long-running task
+
+        goal_handle.succeed()
+        result = Fibonacci.Result()
+        result.sequence = sequence
+        self.get_logger().info(f'Goal succeeded. Result: {result.sequence}')
+        return result
+
+def main(args=None):
+    rclpy.init(args=args)
+    minimal_action_server = MinimalActionServer()
+    rclpy.spin(minimal_action_server)
+    minimal_action_server.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+### Action Client Implementation
+An action client sends a goal to an action server, receives feedback, and gets the final result.
+
+```python
+import rclpy
+from rclpy.action import ActionClient
+from rclpy.node import Node
+from example_interfaces.action import Fibonacci # Example action type
+
+class MinimalActionClient(Node):
+    def __init__(self):
+        super().__init__('minimal_action_client')
+        self._action_client = ActionClient(self, Fibonacci, 'fibonacci')
+        self.get_logger().info('Fibonacci Action Client created.')
+
+    def send_goal(self, order):
+        goal_msg = Fibonacci.Goal()
+        goal_msg.order = order
+
+        self.get_logger().info('Waiting for action server...')
+        self._action_client.wait_for_server()
+
+        self.get_logger().info(f'Sending goal request: order={order}')
+        self._send_goal_future = self._action_client.send_goal_async(
+            goal_msg,
+            feedback_callback=self.feedback_callback)
+        
+        self._send_goal_future.add_done_callback(self.goal_response_callback)
+
+    def goal_response_callback(self, future):
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self.get_logger().info('Goal rejected :(')
+            return
+
+        self.get_logger().info('Goal accepted :)')
+        self._get_result_future = goal_handle.get_result_async()
+        self._get_result_future.add_done_callback(self.get_result_callback)
+
+    def get_result_callback(self, future):
+        result = future.result().result
+        self.get_logger().info(f'Result: {result.sequence}')
+        rclpy.shutdown()
+
+    def feedback_callback(self, feedback_msg):
+        self.get_logger().info(f'Received feedback: {feedback_msg.feedback.sequence}')
+
+def main(args=None):
+    rclpy.init(args=args)
+    minimal_action_client = MinimalActionClient()
+    minimal_action_client.send_goal(10) # Request Fibonacci sequence up to order 10
+    rclpy.spin(minimal_action_client)
+
+if __name__ == '__main__':
+    main()
+```
+
+## Topics vs Services vs Actions
+
+Choosing the correct communication pattern is crucial for designing efficient and robust ROS 2 applications. Here’s a decision matrix and a table summarizing their typical use cases:
+
+| Pattern | Characteristics | Use Case | Example |
+|---|---|---|---|
+| **Topics** | Asynchronous, many-to-many, continuous streams, anonymous | Streaming continuous data, broadcasting information | Sensor readings (LIDAR, camera, IMU), Odometry updates, Robot state |
+| **Services** | Synchronous, one-to-one, request-response, blocking | Requesting a single computation, performing a short-duration task with a definitive result | Get robot status, trigger a single action (e.g., open gripper), query a map |
+| **Actions** | Asynchronous, one-to-one, goal-feedback-result, preemptable | Long-running tasks, tasks with intermediate feedback, tasks that can be cancelled or preempted | Navigate to a goal, pick-and-place operation, complex motion planning |
+
+**When to choose which:**
+*   Use **Topics** for data that is continuously generated and consumed, and where the publisher doesn't need to know if anyone is listening, nor does it expect a direct response.
+*   Use **Services** when you need to trigger a specific operation on another node and receive an immediate, one-time result. It's like a function call across nodes.
+*   Use **Actions** for tasks that are complex, take time to complete, require feedback on their progress, and might need to be canceled or modified mid-execution.
+
+## Advanced Topic Features
+
+Beyond the basic publisher-subscriber model, ROS 2 topics offer advanced features through **Quality of Service (QoS) profiles**. QoS settings allow you to fine-tune the behavior of your communication channels to match the requirements of your application. The default QoS settings are suitable for many cases, but understanding how to adjust them is vital for optimizing performance and reliability.
+
+Key QoS settings include:
+
+*   **Reliability:** Defines whether message delivery is guaranteed (`Reliable`) or if it's acceptable to lose some messages for lower latency (`Best Effort`). `Reliable` is used for critical data (e.g., robot commands), while `Best Effort` is often used for high-frequency sensor data (e.g., camera images) where missing a frame is acceptable.
+*   **Durability:** Determines whether late-joining subscribers receive previously published messages (`Transient Local`) or only messages published after they subscribe (`Volatile`). `Transient Local` is useful for maps or configuration data that a new subscriber should immediately receive.
+*   **History:** Controls how many messages are kept in memory (`Keep Last` N messages) or if all messages are kept (`Keep All`) up to a certain limit.
+*   **Liveliness:** Specifies how nodes declare their presence and how their absence is detected. This is crucial for detecting and reacting to unresponsive nodes.
+
+These QoS settings are directly mapped to features of the underlying DDS implementation, providing powerful control over the communication middleware.
+
+## Custom Interfaces
+
+While ROS 2 provides a rich set of standard message, service, and action types, you will frequently encounter situations where these are insufficient for your specific application. In such cases, ROS 2 allows you to define your own **custom interfaces**. This involves creating `.msg` (message), `.srv` (service), and `.action` (action) files within your ROS 2 packages.
+
+*   **`.msg` files:** Define the structure of messages. They are simple text files where you list data types and field names, similar to defining a C++ struct or a Python class.
+    ```
+    # geometry_msgs/msg/Point.msg
+    float64 x
+    float64 y
+    float64 z
+    ```
+
+*   **`.srv` files:** Define the request and response structure for a service. The request and response fields are separated by `---`.
+    ```
+    # my_package/srv/CalculateArea.srv
+    float64 length
+    float64 width
+    ---
+    float64 area
+    ```
+
+*   **`.action` files:** Define the goal, result, and feedback structure for an action. The goal and result are separated by `---`, and the result and feedback are separated by another `---`.
+    ```
+    # my_package/action/CountUp.action
+    int32 target_number
+    ---
+    int32 last_number
+    ---
+    int32 current_number
+    ```
+
+These custom interfaces are then "built" by the ROS 2 build system (ament), which generates corresponding code in various programming languages (e.g., Python, C++) that can be used in your nodes. This powerful feature ensures type safety and consistency across your distributed robotic system.
+
+## Practical Project: Robot Control System
+
+To integrate your understanding of topics, services, and actions, consider building a simplified robot control system.
+
+1.  **`robot_state_publisher` node (Topic Publisher):** Publishes the robot's current joint angles and possibly its pose (`geometry_msgs/JointState` and `geometry_msgs/PoseStamped`) to respective topics. This runs continuously.
+2.  **`joint_controller` node (Topic Subscriber & Service Server):**
+    *   Subscribes to `/cmd_joint_position` topic to receive continuous desired joint positions.
+    *   Offers a `/set_single_joint_position` service that takes a `joint_name` and `position` as input and sets it, returning a boolean success. This is for one-off precise commands.
+3.  **`gripper_control_action_server` node (Action Server):** Provides a `/close_gripper` action. The goal is `target_force`. It provides feedback on current `gripper_position` and returns `success` in the result.
+4.  **`task_commander` node (Service Client & Action Client):**
+    *   Uses the `/set_single_joint_position` service to move specific joints to a starting pose.
+    *   Then sends a goal to the `/close_gripper` action server, monitoring feedback until the gripper is closed with the target force.
+
+This project demonstrates how these communication patterns work together to manage different aspects of robot control, from continuous data streams to discrete commands and long-running operations.
+
+## Review Questions
+1.  Describe the primary use case for ROS 2 Services. How do they differ from Topics?
+2.  When would you choose to use a ROS 2 Action instead of a Service for a task? Provide an example.
+3.  Explain the three components of a ROS 2 Action definition.
+4.  What are QoS profiles in ROS 2, and why are `Reliable` and `Best Effort` important for different types of data?
+5.  How does ROS 2's architecture improve robustness compared to ROS 1?
+6.  Outline the steps you would take to create a custom ROS 2 message type for a new sensor.
+7.  In the context of the `AddTwoInts` service example, what happens if the service server is not running when the client attempts to send a request?

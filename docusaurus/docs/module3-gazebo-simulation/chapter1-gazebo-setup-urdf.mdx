@@ -1,0 +1,214 @@
+---
+sidebar_position: 2
+---
+
+# Chapter 1: Gazebo Setup and Robot Description
+
+## Introduction
+Welcome to the world of robotics simulation! In this chapter, we will dive into Gazebo, one of the most powerful and widely used open-source robotics simulators in both academia and industry. Gazebo provides a robust physics engine, high-quality graphics, and programmatic interfaces that make it an essential tool for any roboticist. It allows you to create a "digital twin" of your robot—a virtual model that behaves and interacts with its environment just like its physical counterpart. This is crucial for developing and testing everything from basic control logic to complex autonomous navigation algorithms in a safe, cost-effective, and repeatable manner.
+
+Before a robot takes its first step in the real world, it takes thousands in simulation. Gazebo serves as the primary sandbox for this process. By accurately modeling a robot's physical properties (mass, inertia, friction) and its sensors, we can validate its design, train its AI, and squash bugs long before hardware is finalized. This "simulation-first" approach dramatically accelerates development, reduces the risk of damaging expensive equipment, and allows for testing in scenarios that would be impractical or dangerous to replicate in reality. This chapter will guide you through setting up Gazebo and mastering the art of describing your robot using the URDF format, laying the foundation for all subsequent simulation work.
+
+## Installing Gazebo
+Gazebo is most easily installed on Ubuntu Linux, which is the recommended platform for ROS 2 development. The latest generation of Gazebo is now a collection of libraries and tools prefixed with `gz`. Two recent, long-term support (LTS) releases are "Fortress" and "Garden". For this textbook, we recommend using Gazebo Garden, as it is the latest LTS version and will receive support for the longest duration.
+
+You can install Gazebo Garden using the following commands in your Ubuntu terminal:
+
+```bash
+# First, ensure your system is up-to-date
+sudo apt update && sudo apt upgrade
+
+# Install Gazebo Garden
+sudo apt install gz-garden
+```
+If you prefer to use Gazebo Fortress, you can use this command instead:
+```bash
+sudo apt install gz-fortress
+```
+The installation will download and set up all the necessary components. Once installed, you can verify it by running a sample world:
+```bash
+gz sim shapes.sdf
+```
+This should launch the Gazebo GUI and load a world with several simple geometric shapes. This confirms that your Gazebo installation is working correctly and ready for use.
+
+## Gazebo Interface Overview
+When you first launch Gazebo, you are greeted with a rich graphical user interface (GUI) designed for interacting with and monitoring your simulation. Understanding this interface is key to working efficiently. The main window is dominated by the **3D Viewport**, where you can see your robot and its environment. You can navigate this view using your mouse: left-click to orbit, right-click to pan, and scroll to zoom.
+
+On the right side of the screen is the **Scene Tree**, which provides a hierarchical view of everything in the simulation world, including models, lights, and physics properties. You can select, inspect, and modify entities directly from this tree. Below the Scene Tree is the **Component Inspector**, where you can view and edit the detailed properties of any selected entity, such as its pose, material, or plugin configuration.
+
+At the bottom, you'll find the **Playback Controls**, which allow you to play, pause, and step through the simulation time. The **World Editor** and **Model Editor** are powerful tools accessible from the top toolbar that allow you to create and modify environments and robot models directly within the GUI. Mastering this interface will allow you to quickly debug simulations, inspect sensor data, and build new test scenarios without writing any code.
+
+## Understanding URDF (Unified Robot Description Format)
+The Unified Robot Description Format (URDF) is an XML-based file format used in ROS to describe all elements of a robot model. It is the standard way to represent a robot's physical structure, including its links, joints, and their relationships. A URDF file is essentially a blueprint that defines the robot's kinematics and dynamics, as well as its visual appearance.
+
+The core components of a URDF are:
+- **`<link>`**: Describes a rigid part of the robot, such as a chassis, a wheel, or an arm segment. Each link has properties for its `visual` appearance, `collision` geometry (for physics calculations), and `inertial` properties (mass and inertia tensor).
+- **`<joint>`**: Defines the connection between two links. It specifies the type of motion allowed (e.g., revolute, prismatic, fixed), its axis of motion, and its kinematic limits.
+
+By connecting a series of links and joints, you form a kinematic tree that represents the entire robot. This tree structure is fundamental for many robotics tasks, as it allows software like TF2 to compute the relative poses of all parts of the robot.
+
+### Basic URDF Structure
+Here is a minimal URDF file for a single-link robot:
+```xml
+<?xml version="1.0"?>
+<robot name="simple_robot">
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="0.5 0.5 0.2"/>
+      </geometry>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.5 0.5 0.2"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="10"/>
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" 
+               iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
+  </link>
+</robot>
+```
+This file defines a robot named `simple_robot` with one link called `base_link`. This link is represented as a box with specified dimensions for its visual and collision geometries, and it is assigned a mass and inertia.
+
+## URDF Components Deep Dive
+
+### Links
+The `<link>` element is the fundamental building block of a robot's structure in URDF. Each link represents a single rigid body. A link is defined by three main sub-elements: `<visual>`, `<collision>`, and `<inertial>`.
+
+-   **`<visual>`**: This element defines the appearance of the link—what you see in the simulation or visualization tools like RViz. It specifies the geometry (e.g., `<box>`, `<cylinder>`, `<sphere>`, or a `<mesh>` file for complex shapes) and the material (color and texture). It's common to use low-polygon meshes for visualization to maintain performance.
+-   **`<collision>`**: This defines the geometry used by the physics engine to calculate collisions. It is often a simplified version of the visual geometry (e.g., using simple shapes to approximate a complex mesh) to speed up physics calculations. Having a separate collision geometry is a critical optimization for simulation performance.
+-   **`<inertial>`**: This element describes the dynamic properties of the link, including its mass and inertia tensor. These values are crucial for realistic physics simulation, as they determine how the link responds to forces and torques. Accurately defining these properties is essential for stable and predictable simulation behavior.
+
+### Joints
+The `<joint>` element connects two links and defines their relative motion. A joint has a `parent` link and a `child` link, forming the kinematic chain. The type of joint determines the degrees of freedom between the links.
+
+Key joint types include:
+-   **`fixed`**: A rigid connection with no degrees of freedom. Used to connect parts that don't move relative to each other (e.g., a sensor to a chassis).
+-   **`revolute`**: Allows rotation around a single axis, with optional upper and lower angle limits. Used for wheels or robotic arm joints.
+-   **`continuous`**: A special type of revolute joint with no angle limits, allowing for infinite rotation. Perfect for drive wheels.
+-   **`prismatic`**: Allows linear motion along a single axis, with optional limits. Used for extending parts or linear actuators.
+
+The following example defines a continuous joint for a wheel:
+```xml
+<joint name="wheel_joint" type="continuous">
+  <parent link="base_link"/>
+  <child link="wheel_link"/>
+  <axis xyz="0 1 0"/>
+  <origin xyz="0.2 0 -0.1" rpy="0 0 0"/>
+</joint>
+```
+Here, the `wheel_link` can rotate continuously around the Y-axis relative to the `base_link`.
+
+### Materials and Colors
+To make your robot model visually informative and appealing, you can define materials and colors in the `<visual>` section of a link. The `<material>` tag allows you to specify a color using RGBA (Red, Green, Blue, Alpha) values, where each value ranges from 0.0 to 1.0.
+
+You can define a named material at the top level of your URDF file and then reuse it for multiple links. This is an efficient way to maintain a consistent color scheme across your robot.
+
+Example of a named material:
+```xml
+<material name="blue">
+  <color rgba="0.0 0.0 0.8 1.0"/>
+</material>
+
+<link name="base_link">
+  <visual>
+    <geometry>
+      <box size="0.5 0.5 0.2"/>
+    </geometry>
+    <material name="blue"/>
+  </visual>
+  ...
+</link>
+```
+This defines a material named "blue" and applies it to the `base_link`. Clear and distinct coloring for different parts of your robot can make it much easier to visualize its movement and debug its behavior in tools like RViz and Gazebo.
+
+## SDF (Simulation Description Format)
+While URDF is excellent for describing the kinematics and visual appearance of a single robot, it has limitations. It cannot specify properties of the simulation world itself (like lighting or physics), nor can it easily represent non-robot entities or multiple robots. This is where the **Simulation Description Format (SDF)** comes in.
+
+SDF is a more comprehensive XML format designed specifically for describing everything in a simulation environment—from robots and sensors to lights and static objects. Gazebo uses SDF as its native format. While you can use URDF files directly with Gazebo (it converts them to SDF internally), using SDF provides more power and control. You can define Gazebo-specific plugins for sensors and actuators, set precise physics properties, and build entire worlds. For complex simulations, especially those involving multiple robots or detailed environments, SDF is the preferred format.
+
+```xml
+<?xml version="1.0"?>
+<sdf version="1.8">
+  <model name="my_robot">
+    <link name="base_link">
+      <pose>0 0 0.1 0 0 0</pose>
+      <collision name="collision">
+        <geometry>
+          <box><size>0.5 0.5 0.2</size></box>
+        </geometry>
+      </collision>
+      <visual name="visual">
+        <geometry>
+          <box><size>0.5 0.5 0.2</size></box>
+        </geometry>
+      </visual>
+    </link>
+  </model>
+</sdf>
+```
+Notice the additional tags like `<pose>` and `<model>`, which are part of the richer SDF specification.
+
+## Building Your First Robot Model
+Let's build a simple two-wheeled robot URDF. This involves creating a `base_link` for the chassis and two `wheel_link`s.
+
+1.  **Chassis (`base_link`)**: Start with a simple box-shaped link to serve as the robot's body. Define its visual, collision, and inertial properties.
+2.  **Wheels (`left_wheel_link`, `right_wheel_link`)**: Create two cylinder-shaped links for the wheels.
+3.  **Joints**: Connect the wheels to the chassis using `continuous` joints to allow for rotation. The joints' origins should be set to position the wheels correctly on either side of the chassis.
+4.  **Launch File**: Create a ROS 2 launch file to publish the robot's state and visualize it. The `robot_state_publisher` node reads the URDF file, and `joint_state_publisher` provides a GUI to move the joints.
+
+By following these steps, you create a complete description of your robot that can be loaded into Gazebo for simulation or into RViz for visualization, forming the basis for controlling your virtual robot.
+
+## URDF with Xacro (Macros)
+As robot models become more complex, URDF files can become very long and repetitive. **Xacro (XML Macros)** is a pre-processing tool that helps manage this complexity. With Xacro, you can define constants, create macros for reusable components (like a wheel or a sensor), and perform simple mathematical calculations. This allows you to build modular and easily configurable URDF files. For example, you can create a macro for a wheel and then instantiate it twice for the left and right wheels, passing in parameters to specify their position. This makes your robot descriptions cleaner, more readable, and easier to maintain.
+
+```xml
+<!-- Example Xacro Macro for a wheel -->
+<xacro:macro name="wheel" params="prefix parent *origin">
+  <link name="${prefix}_wheel_link">
+    <!-- link visual, collision, inertial details -->
+  </link>
+  <joint name="${prefix}_wheel_joint" type="continuous">
+    <parent link="${parent}"/>
+    <child link="${prefix}_wheel_link"/>
+    <xacro:insert_block name="origin"/>
+    <axis xyz="0 1 0"/>
+  </joint>
+</xacro:macro>
+```
+
+## Visualizing URDF in RViz and Gazebo
+Once you have a URDF file, you need to visualize it to ensure it's correct. **RViz** is the primary 3D visualization tool in ROS 2. You can use it to display your robot model, sensor data, and more. A standard launch file for visualization typically includes the `robot_state_publisher` node, which reads your URDF and publishes the robot's transformations to TF2.
+
+To spawn your robot in Gazebo, you'll need a launch file that starts the Gazebo simulator and uses the `spawn_entity.py` script to add your robot model to the world.
+
+```bash
+# Example command to launch a robot into Gazebo
+ros2 launch my_robot_description gazebo.launch.py
+```
+This command would execute a launch file that handles starting Gazebo and spawning the robot model described in your URDF.
+
+## Practical Exercise: Humanoid Robot Base
+For a practical exercise, try building the base of a humanoid robot. Start with a torso link, then add two arm links (upper and lower arm) on each side. Connect them using `revolute` joints to allow for shoulder and elbow movement. This exercise will challenge you to manage multiple links and joints, think about joint limits, and structure a more complex kinematic chain. Focus on getting the parent-child relationships correct and setting the joint origins and axes appropriately to create realistic arm motion. This will be a great way to apply the concepts of URDF construction you've learned.
+
+## Key Takeaways
+-   Gazebo is a powerful open-source simulator for testing and validating robotics systems.
+-   URDF is the standard XML format for describing a robot's kinematic and dynamic properties.
+-   A URDF model is composed of `<link>` (rigid parts) and `<joint>` (connections between links) elements.
+-   Links have separate `<visual>`, `<collision>`, and `<inertial>` properties for appearance, physics, and dynamics.
+-   Joints define the type of motion between links (e.g., `fixed`, `revolute`, `continuous`, `prismatic`).
+-   SDF is Gazebo's native format, offering more features than URDF for describing entire simulation worlds.
+-   Xacro is a macro language that helps simplify and modularize complex URDF files.
+-   RViz and Gazebo are essential tools for visualizing and simulating your robot model.
+
+## Review Questions
+1.  What is the primary purpose of using a simulator like Gazebo in robotics?
+2.  What are the three main components of a `<link>` tag in URDF, and what does each define?
+3.  Explain the difference between a `revolute` and a `continuous` joint. When would you use each?
+4.  What is the role of the `robot_state_publisher` node when working with URDF files?
+5.  What are the main advantages of using SDF over URDF for simulation?
+6.  How does Xacro help in managing complex robot descriptions?
+7.  Why is it a good practice to have simpler collision geometry than visual geometry?

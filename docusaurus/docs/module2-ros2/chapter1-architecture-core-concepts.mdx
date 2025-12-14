@@ -1,0 +1,188 @@
+---
+sidebar_position: 1
+---
+
+# Chapter 1: ROS 2 Architecture and Core Concepts
+
+## Introduction
+
+Welcome to the heart of modern robotics software development. ROS 2, the second generation of the Robot Operating System, is a flexible framework for writing robot software. It's a set of software libraries and tools that help you build robot applications, from the simple to the incredibly complex. ROS 2 is not an operating system in the traditional sense, like Windows or Linux, but rather a middleware that runs on top of an existing OS. It provides the services you would expect from an operating system, including hardware abstraction, low-level device control, implementation of commonly-used functionality, message-passing between processes, and package management.
+
+The evolution from ROS 1 to ROS 2 was driven by the need to address the demands of real-world, commercial robotics applications. While ROS 1 was a groundbreaking success in the research community, it had limitations in multi-robot systems, real-time control, and use in resource-constrained embedded systems. ROS 2 was redesigned from the ground up to overcome these limitations, with a focus on improved reliability, security, and performance. It is now the standard for both academic research and commercial product development in robotics.
+
+## ROS 2 Architecture Overview
+
+The architecture of ROS 2 is designed to be highly modular and distributed, making it ideal for building complex robotic systems. At its core, ROS 2 leverages the **Data Distribution Service (DDS)**, an industry-standard middleware protocol for real-time systems. DDS provides a publish-subscribe communication model that is highly efficient and scalable. This is a significant departure from ROS 1's custom TCP-based communication system and is a key reason for ROS 2's improved performance and flexibility.
+
+The entire ROS 2 system can be conceptualized as a **graph** of interconnected processes. Each process, called a **node**, is responsible for a specific task (e.g., controlling a motor, reading a sensor, or planning a path). These nodes communicate with each other by passing messages. This distributed computing model allows for a high degree of modularity. You can have nodes running on different computers, in different programming languages, all seamlessly communicating with each other as if they were on the same machine. This is particularly powerful for multi-robot systems, where robots can share sensor data and coordinate their actions over a network.
+
+This decentralized architecture also enhances robustness. In ROS 1, a central "roscore" was a single point of failure. In ROS 2, there is no central master. Nodes can discover each other automatically, and the system can continue to function even if some nodes go down. This makes ROS 2 systems more resilient and suitable for mission-critical applications.
+
+## Understanding Nodes
+
+A **node** is the fundamental processing unit in a ROS 2 system. Think of a node as a small, independent program that performs a single, well-defined task. For example, you might have a `camera_node` that publishes images from a camera, a `motor_controller_node` that controls the robot's wheels, and a `navigation_node` that subscribes to sensor data and publishes motor commands. Breaking a complex system down into these small, modular nodes makes the system easier to develop, debug, and maintain.
+
+Nodes are run within an **executor**, which is responsible for managing their execution and callback scheduling. The most common way to run a node is to "spin" it, which means the executor will continuously check for incoming messages or service requests and execute the appropriate callback functions.
+
+ROS 2 also introduces the concept of a **managed node** with a **lifecycle**. This allows for more explicit control over the state of a node, with defined states like `unconfigured`, `inactive`, `active`, and `finalized`. This is particularly important for building robust and predictable systems, as it allows you to ensure that nodes are properly configured and initialized before they start performing their tasks.
+
+### Creating Your First Node
+Here is the code for a minimal "Hello World" node in ROS 2 using Python. This node simply starts up and logs a message.
+
+```python
+import rclpy
+from rclpy.node import Node
+
+class MinimalNode(Node):
+    def __init__(self):
+        super().__init__('minimal_node')
+        self.get_logger().info('Hello from my first ROS 2 node!')
+
+def main(args=None):
+    rclpy.init(args=args)
+    try:
+        node = MinimalNode()
+        rclpy.spin(node)
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Topics and Publisher-Subscriber Pattern
+
+The most common way for nodes to communicate in ROS 2 is through **topics**. A topic is a named bus over which nodes can exchange messages. The communication pattern used with topics is called **publish-subscriber**.
+
+A node that wants to share information **publishes** messages to a topic. Any number of other nodes can **subscribe** to that topic to receive the messages. This is an anonymous, one-to-many communication model. The publisher doesn't know (or care) which nodes are subscribed, and the subscribers don't know who is publishing. They just need to agree on the topic name and the message type.
+
+This decoupling of nodes is a powerful feature. It allows you to easily add new nodes to a system to listen in on data streams without having to modify the existing nodes.
+
+ROS 2 also introduces **Quality of Service (QoS)** settings for topics. QoS allows you to configure how messages are handled, with options for reliability (e.g., "reliable" to guarantee delivery, or "best effort" for high-frequency sensor data where it's okay to drop some messages), durability, and history depth. This gives you fine-grained control over the communication, allowing you to optimize for different use cases.
+
+### Publisher Example
+
+This node publishes a "Hello World" message with a counter to the `/chatter` topic every second.
+
+```python
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+
+class MinimalPublisher(Node):
+    def __init__(self):
+        super().__init__('minimal_publisher')
+        self.publisher_ = self.create_publisher(String, 'chatter', 10)
+        self.timer = self.create_timer(1.0, self.timer_callback)
+        self.i = 0
+
+    def timer_callback(self):
+        msg = String()
+        msg.data = f'Hello World: {self.i}'
+        self.publisher_.publish(msg)
+        self.get_logger().info(f'Publishing: "{msg.data}"')
+        self.i += 1
+
+def main(args=None):
+    rclpy.init(args=args)
+    try:
+        minimal_publisher = MinimalPublisher()
+        rclpy.spin(minimal_publisher)
+    finally:
+        minimal_publisher.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+### Subscriber Example
+This node subscribes to the `/chatter` topic and logs the messages it receives.
+
+```python
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+
+class MinimalSubscriber(Node):
+    def __init__(self):
+        super().__init__('minimal_subscriber')
+        self.subscription = self.create_subscription(
+            String,
+            'chatter',
+            self.listener_callback,
+            10)
+        self.subscription  # prevent unused variable warning
+
+    def listener_callback(self, msg):
+        self.get_logger().info(f'I heard: "{msg.data}"')
+
+def main(args=None):
+    rclpy.init(args=args)
+    try:
+        minimal_subscriber = MinimalSubscriber()
+        rclpy.spin(minimal_subscriber)
+    finally:
+        minimal_subscriber.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Message Types
+Messages in ROS 2 are defined using a simple interface definition language (IDL). These `.msg` files define the data structure of a message. ROS 2 provides a rich set of standard message types for common robotics data. These are organized into packages:
+
+*   **`std_msgs`**: Contains basic data types like `String`, `Int32`, `Float64`, etc.
+*   **`sensor_msgs`**: A rich set of messages for common sensor data, including `Image`, `LaserScan` (for LIDAR), `Imu`, `PointCloud2`, and `NavSatFix` (for GPS).
+*   **`geometry_msgs`**: Provides messages for representing geometric primitives, such as `Point`, `Vector3`, `Pose` (position and orientation), and `Twist` (linear and angular velocity).
+
+While these standard messages cover many use cases, you will often need to define your own **custom messages** to suit the specific needs of your application. This is a straightforward process in ROS 2, and we will cover it in a later chapter.
+
+## ROS 2 vs ROS 1
+ROS 2 represents a significant leap forward from ROS 1. Here are some of the key differences and improvements:
+
+*   **DDS Middleware:** As mentioned, ROS 2 uses DDS for its communication, providing better performance, reliability, and interoperability than ROS 1's custom TCP-based system.
+*   **No Central Master:** ROS 2's decentralized discovery mechanism eliminates the single point of failure that was the `roscore` in ROS 1.
+*   **Lifecycle Management:** Managed nodes with explicit lifecycles allow for more robust and predictable system behavior.
+*   **Improved Security:** ROS 2 has built-in security features, including authentication, encryption, and access control, which were largely absent in ROS 1.
+*   **Support for Real-time and Embedded Systems:** ROS 2 is designed to be usable in real-time control loops and on resource-constrained microcontrollers.
+
+## Practical Exercise: Temperature Monitor System
+To solidify your understanding of nodes and topics, a great exercise is to build a simple temperature monitoring system.
+
+1.  **Create a `temperature_sensor_node`:** This node will simulate a temperature sensor. It should publish a `sensor_msgs/Temperature` message to a `/temperature` topic every second. You can just make up the temperature data, perhaps having it fluctuate randomly around a setpoint.
+2.  **Create a `temperature_monitor_node`:** This node will subscribe to the `/temperature` topic. It should log the temperature it receives. Add some logic to it: if the temperature goes above a certain threshold, it should print a "WARNING: Overheating!" message.
+
+This exercise will give you hands-on practice with creating nodes, publishers, and subscribers, and using standard ROS 2 message types.
+
+## ROS 2 Command Line Tools
+ROS 2 comes with a powerful set of command-line tools for introspecting and debugging your system.
+
+```bash
+# List all the active nodes in the system
+ros2 node list
+
+# List all the active topics
+ros2 topic list
+
+# "echo" the messages being published on a specific topic
+ros2 topic echo /chatter
+
+# Check the publishing frequency of a topic
+ros2 topic hz /chatter
+
+# Show the definition of a message type
+ros2 interface show std_msgs/msg/String
+```
+
+## Review Questions
+1.  What is the role of DDS in the ROS 2 architecture?
+2.  Explain the publisher-subscriber communication pattern. What are its advantages?
+3.  What is a ROS 2 node, and what is the purpose of an executor?
+4.  What is the difference between a `sensor_msgs/Image` and a `geometry_msgs/Pose` message?
+5.  Why is the decentralized nature of ROS 2 an improvement over ROS 1's master-based system?
+6.  What is the purpose of a ROS 2 launch file?
+7.  What information does an IMU provide, and why is it prone to drift?
+8.  Explain the concept of QoS and why you might use a "best effort" policy for a camera feed.
