@@ -29,6 +29,7 @@ const config = {
   // If you aren't using GitHub pages, you don't need these.
   organizationName: 'Abdul-Rehman920', // Usually your GitHub org/user name.
   projectName: 'Physical-AI-Humanoid-Robotics-', // Usually your repo name.
+  deploymentBranch: 'gh-pages',
   trailingSlash: true,
 
   onBrokenLinks: 'throw',
