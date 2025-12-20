@@ -16,12 +16,10 @@ Before you begin, ensure you have the following installed:
 
 ## 1. Project Setup
 
-1.  **Clone the Repository**:
+1.  **Navigate to the `rag_pipeline` directory**:
     ```bash
-    git clone <repository_url>
-    cd rag-pipeline
+    cd rag_pipeline
     ```
-    *(Note: Replace `<repository_url>` with the actual URL of your repository and `rag-pipeline` with the directory containing `main.py` once it's created.)*
 
 2.  **Create a Virtual Environment**:
     It's recommended to use a virtual environment to manage project dependencies.
@@ -37,7 +35,6 @@ Before you begin, ensure you have the following installed:
     ```bash
     uv pip install -r requirements.txt
     ```
-    *(Note: `requirements.txt` will be generated during the implementation phase.)*
 
 ## 2. Configuration
 
@@ -66,12 +63,15 @@ Once configured, you can run the pipeline:
 python main.py
 ```
 This command will:
-1. Discover URLs from the Docusaurus website using `sitemap.xml`.
-2. Scrape and extract text content from each page.
-3. Chunk the text content by paragraph.
-4. Generate embeddings using the Cohere API.
-5. Store embeddings and metadata in Qdrant Cloud.
+1. Initialize Cohere and Qdrant clients.
+2. Create a new Qdrant collection named `rag_embedding`.
+3. Discover URLs from the Docusaurus website using `sitemap.xml`.
+4. Scrape and extract text content from each page.
+5. Chunk the text content by paragraph.
+6. Generate embeddings using the Cohere API.
+7. Store embeddings and metadata in Qdrant Cloud.
+8. Run a basic retrieval test to verify the pipeline.
 
 ## 4. Verification
 
-The `main.py` script will include a basic retrieval test at the end of its execution. After the pipeline completes, you should see output indicating the results of this test, confirming that relevant information can be retrieved from the Qdrant database.
+The `main.py` script will include a basic retrieval test at the end of its execution. After the pipeline completes, you should see log output indicating the results of this test, confirming that relevant information can be retrieved from the Qdrant database.
