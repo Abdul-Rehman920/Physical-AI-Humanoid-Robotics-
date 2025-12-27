@@ -1,8 +1,18 @@
-openai-agents>=0.6.4
-openai>=1.0.0
+# Core Dependencies
 cohere>=5.20.0
 qdrant-client>=1.16.0
-fastapi>=0.115.0
-uvicorn[standard]>=0.34.0
 python-dotenv>=1.0.0
 beautifulsoup4>=4.14.0
+lxml==5.1.0
+requests==2.32.3
+
+# LLM (Groq - FREE)
+groq==0.11.0
+
+# FastAPI (for backend - Spec 4)
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+pydantic==2.10.0
+
+# Utilities
+httpx==0.27.0

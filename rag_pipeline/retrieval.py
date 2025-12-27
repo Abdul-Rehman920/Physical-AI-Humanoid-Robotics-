@@ -42,7 +42,7 @@ class RAGRetriever:
         try:
             response = self.cohere_client.embed(
                 texts=[query],
-                model="embed-multilingual-v3.0",
+                model="embed-english-v3.0",  # ✅ CHANGE: Same as main.py
                 input_type="search_query"
             )
             return response.embeddings[0]
